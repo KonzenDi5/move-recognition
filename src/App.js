@@ -38,7 +38,7 @@ function App() {
             return currentDetection.detection.score > bestDetection.detection.score ? currentDetection : bestDetection
           })
           faceapi.draw.drawDetections(canvas, detection) // desenhando a detecção no canvas
-
+            // faceapi.draw.drawFaceLandmarks(canvas, detection); // remover para traçar as linhas faciais em cameras mellhores, na do iphone funcionou kkkk
           faceapi.draw.drawFaceExpressions(canvas, detection) // desenhando as expressões faciais no canvas
         }
       }, 100)      
