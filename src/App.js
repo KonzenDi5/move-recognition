@@ -1,59 +1,121 @@
-import React, { useEffect } from 'react'; 
-import * as faceapi from 'face-api.js'; // importando a biblioteca face-api.js
+import React, { useEffect } from 'react';
 
 function App() {
-  useEffect(() => { // usando o hook useEffect para executar uma função após o componente ser montado
-    const video = document.getElementById('video') // pegando o elemento de vídeo
+  useEffect(() => {
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
 
-    // carregando os modelos da face-api.js
-    Promise.all([
-      faceapi.nets.tinyFaceDetector.loadFromUri('/models'),
-      faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
-      faceapi.nets.faceRecognitionNet.loadFromUri('/models'),
-      faceapi.nets.faceExpressionNet.loadFromUri('/models')
-    ]).then(startVideo) // após carregar os modelos, inicia o vídeo
+    let previousFrame = null;
+    let positions = []; // Para armazenar posições e estabilizar o rastreamento
 
-    function startVideo() { // função para iniciar o vídeo
-      navigator.mediaDevices.getUserMedia(
-        { video: {} },
-      )
+    // Acessar a webcam
+    navigator.mediaDevices.getUserMedia({ video: true })
       .then(stream => {
-        video.srcObject = stream; // definindo a fonte do vídeo para a stream da webcam
-      })
-      .catch(err => console.error(err)); // logando qualquer erro
-    }
+        video.srcObject = stream;
+        video.onloadedmetadata = () => {
+          video.play();
 
-    video.addEventListener('play', () => { // adicionando um ouvinte de evento quando o vídeo começar a tocar
-      const canvas = faceapi.createCanvasFromMedia(video) // criando um canvas a partir do vídeo
-      const container = document.getElementById('container') // pegando o elemento container
-      container.append(canvas) // adicionando o canvas ao container
-      const displaySize = { width: video.videoWidth, height: video.videoHeight } // definindo o tamanho de exibição
-      faceapi.matchDimensions(canvas, displaySize) // combinando as dimensões do canvas com o tamanho de exibição
-      setInterval(async () => { // definindo um intervalo para executar a detecção de rosto
-        const detections = await faceapi.detectAllFaces(video, new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceExpressions() // detectando todas as faces no vídeo
-        const resizedDetections = faceapi.resizeResults(detections, displaySize) // redimensionando os resultados para o tamanho de exibição
-        canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height) // limpando o canvas
-        if (resizedDetections.length > 0) { // se houver detecções
-          const detection = resizedDetections.reduce((bestDetection, currentDetection) => { // pegando a melhor detecção
-            return currentDetection.detection.score > bestDetection.detection.score ? currentDetection : bestDetection
-          })
-          faceapi.draw.drawDetections(canvas, detection) // desenhando a detecção no canvas
-            // faceapi.draw.drawFaceLandmarks(canvas, detection); // remover para traçar as linhas faciais em cameras mellhores, na do iphone funcionou kkkk
-          faceapi.draw.drawFaceExpressions(canvas, detection) // desenhando as expressões faciais no canvas
-        }
-      }, 100)      
-    })
-  }, [])
+          const width = video.videoWidth;
+          const height = video.videoHeight;
+          canvas.width = width;
+          canvas.height = height;
+
+          function detectFaceAndHands() {
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+              ctx.drawImage(video, 0, 0, width, height);
+              const currentFrame = ctx.getImageData(0, 0, width, height);
+
+              if (previousFrame) {
+                const threshold = 25;
+                const length = currentFrame.data.length / 4;
+                let movementPoints = [];
+
+                for (let i = 0; i < length; i++) {
+                  const r1 = previousFrame.data[i * 4];
+                  const g1 = previousFrame.data[i * 4 + 1];
+                  const b1 = previousFrame.data[i * 4 + 2];
+
+                  const r2 = currentFrame.data[i * 4];
+                  const g2 = currentFrame.data[i * 4 + 1];
+                  const b2 = currentFrame.data[i * 4 + 2];
+
+                  const diff = Math.abs(r1 - r2) + Math.abs(g1 - g2) + Math.abs(b1 - b2);
+
+                  if (diff > threshold) {
+                    const x = i % width;
+                    const y = Math.floor(i / width);
+                    movementPoints.push({ x, y });
+                  }
+                }
+
+                if (movementPoints.length > 0) {
+                  let sumX = 0;
+                  let sumY = 0;
+                  movementPoints.forEach(point => {
+                    sumX += point.x;
+                    sumY += point.y;
+                  });
+
+                  const avgX = sumX / movementPoints.length;
+                  const avgY = sumY / movementPoints.length;
+
+                  // Armazenar a posição para estabilização
+                  positions.push({ x: avgX, y: avgY });
+                  if (positions.length > 10) positions.shift();
+
+                  // Calcular a média das últimas posições para estabilizar
+                  const stabilizedX = positions.reduce((sum, p) => sum + p.x, 0) / positions.length;
+                  const stabilizedY = positions.reduce((sum, p) => sum + p.y, 0) / positions.length;
+
+                  // Limpar o canvas antes de desenhar
+                  ctx.clearRect(0, 0, width, height);
+                  ctx.drawImage(video, 0, 0, width, height);
+
+                  // Desenhar o retângulo estabilizado
+                  ctx.strokeStyle = 'red';
+                  ctx.lineWidth = 2;
+                  ctx.strokeRect(stabilizedX - 50, stabilizedY - 50, 100, 100);
+
+                  // Desenhar olhos e boca de forma aproximada
+                  ctx.strokeStyle = 'blue';
+                  ctx.strokeRect(stabilizedX - 25, stabilizedY - 60, 20, 10); // Olho esquerdo
+                  ctx.strokeRect(stabilizedX + 5, stabilizedY - 60, 20, 10);  // Olho direito
+                  ctx.strokeRect(stabilizedX - 15, stabilizedY - 30, 30, 10); // Boca
+
+                  // Desenhar esqueleto da mão de forma aproximada
+                  ctx.strokeStyle = 'green';
+                  ctx.beginPath();
+                  ctx.moveTo(stabilizedX, stabilizedY);
+                  ctx.lineTo(stabilizedX - 20, stabilizedY + 50); // Ponto 1
+                  ctx.lineTo(stabilizedX + 20, stabilizedY + 50); // Ponto 2
+                  ctx.lineTo(stabilizedX, stabilizedY); // Voltar ao ponto inicial
+                  ctx.stroke();
+                }
+              }
+
+              previousFrame = currentFrame;
+            }
+
+            requestAnimationFrame(detectFaceAndHands);
+          }
+
+          detectFaceAndHands();
+        };
+      })
+      .catch(err => console.error('Erro ao acessar a webcam:', err));
+  }, []);
 
   return (
-    <div className="App"> 
+    <div className="App">
       <header className="App-header">
-        <div id="container">
-          <video id="video" width="720" height="560" autoPlay muted></video> 
+        <div id="container" style={{ position: 'relative' }}>
+          <video id="video" width="720" height="560" autoPlay muted style={{ position: 'absolute', top: 0, left: 0 }}></video>
+          <canvas id="canvas" style={{ position: 'absolute', top: 0, left: 0 }}></canvas>
         </div>
       </header>
     </div>
   );
 }
 
-export default App; 
+export default App;
