@@ -1,4 +1,7 @@
 import React, { useEffect } from 'react';
+import * as tf from '@tensorflow/tfjs';
+import * as faceLandmarksDetection from '@tensorflow-models/face-landmarks-detection';
+import * as handPoseDetection from '@tensorflow-models/hand-pose-detection';
 
 function App() {
   useEffect(() => {
@@ -6,14 +9,24 @@ function App() {
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
 
-    let previousFrame = null;
-    let positions = []; // Para armazenar posições e estabilizar o rastreamento
+    let facePositions = [];
+    let savedFaces = JSON.parse(localStorage.getItem('faces')) || [];
 
-    // Acessar a webcam
+    const MAX_FACES = 10;
+
+    function isDuplicateFace(currentFace) {
+      const threshold = 100;
+      return savedFaces.some(savedFace => {
+        const diffX = Math.abs(savedFace.x - currentFace.x);
+        const diffY = Math.abs(savedFace.y - currentFace.y);
+        return diffX < threshold && diffY < threshold;
+      });
+    }
+
     navigator.mediaDevices.getUserMedia({ video: true })
       .then(stream => {
         video.srcObject = stream;
-        video.onloadedmetadata = () => {
+        video.onloadedmetadata = async () => {
           video.play();
 
           const width = video.videoWidth;
@@ -21,80 +34,127 @@ function App() {
           canvas.width = width;
           canvas.height = height;
 
-          function detectFaceAndHands() {
-            if (video.readyState === video.HAVE_ENOUGH_DATA) {
-              ctx.drawImage(video, 0, 0, width, height);
-              const currentFrame = ctx.getImageData(0, 0, width, height);
+          const faceModel = await faceLandmarksDetection.createDetector(
+            faceLandmarksDetection.SupportedModels.MediaPipeFaceMesh,
+            {
+              runtime: 'mediapipe',
+              solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh'
+            }
+          );
 
-              if (previousFrame) {
-                const threshold = 25;
-                const length = currentFrame.data.length / 4;
-                let movementPoints = [];
+          const handModel = await handPoseDetection.createDetector(
+            handPoseDetection.SupportedModels.MediaPipeHands,
+            {
+              runtime: 'mediapipe',
+              solutionPath: 'https://cdn.jsdelivr.net/npm/@mediapipe/hands'
+            }
+          );
 
-                for (let i = 0; i < length; i++) {
-                  const r1 = previousFrame.data[i * 4];
-                  const g1 = previousFrame.data[i * 4 + 1];
-                  const b1 = previousFrame.data[i * 4 + 2];
+          async function detectFaceAndHands() {
+            const facePredictions = await faceModel.estimateFaces(video);
+            const handPredictions = await handModel.estimateHands(video);
 
-                  const r2 = currentFrame.data[i * 4];
-                  const g2 = currentFrame.data[i * 4 + 1];
-                  const b2 = currentFrame.data[i * 4 + 2];
+            ctx.clearRect(0, 0, width, height);
+            ctx.drawImage(video, 0, 0, width, height);
 
-                  const diff = Math.abs(r1 - r2) + Math.abs(g1 - g2) + Math.abs(b1 - b2);
+            if (facePredictions.length > 0) {
+              facePredictions.forEach(prediction => {
+                const keypoints = prediction.keypoints;
 
-                  if (diff > threshold) {
-                    const x = i % width;
-                    const y = Math.floor(i / width);
-                    movementPoints.push({ x, y });
+                ctx.strokeStyle = 'green';
+                ctx.lineWidth = 2;
+
+                ctx.beginPath();
+                ctx.moveTo(keypoints[10].x, keypoints[10].y);
+                ctx.lineTo(keypoints[338].x, keypoints[338].y);
+                ctx.lineTo(keypoints[297].x, keypoints[297].y);
+                ctx.lineTo(keypoints[332].x, keypoints[332].y);
+                ctx.lineTo(keypoints[284].x, keypoints[284].y);
+                ctx.lineTo(keypoints[251].x, keypoints[251].y);
+                ctx.lineTo(keypoints[389].x, keypoints[389].y);
+                ctx.lineTo(keypoints[356].x, keypoints[356].y);
+                ctx.lineTo(keypoints[454].x, keypoints[454].y);
+                ctx.lineTo(keypoints[323].x, keypoints[323].y);
+                ctx.lineTo(keypoints[361].x, keypoints[361].y);
+                ctx.lineTo(keypoints[288].x, keypoints[288].y);
+                ctx.lineTo(keypoints[397].x, keypoints[397].y);
+                ctx.lineTo(keypoints[365].x, keypoints[365].y);
+                ctx.lineTo(keypoints[379].x, keypoints[379].y);
+                ctx.lineTo(keypoints[378].x, keypoints[378].y);
+                ctx.lineTo(keypoints[400].x, keypoints[400].y);
+                ctx.lineTo(keypoints[377].x, keypoints[377].y);
+                ctx.lineTo(keypoints[152].x, keypoints[152].y);
+                ctx.closePath();
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(keypoints[33].x, keypoints[33].y);
+                ctx.lineTo(keypoints[133].x, keypoints[133].y);
+                ctx.lineTo(keypoints[160].x, keypoints[160].y);
+                ctx.lineTo(keypoints[158].x, keypoints[158].y);
+                ctx.lineTo(keypoints[153].x, keypoints[153].y);
+                ctx.lineTo(keypoints[144].x, keypoints[144].y);
+                ctx.lineTo(keypoints[163].x, keypoints[163].y);
+                ctx.lineTo(keypoints[7].x, keypoints[7].y);
+                ctx.closePath();
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(keypoints[362].x, keypoints[362].y);
+                ctx.lineTo(keypoints[263].x, keypoints[263].y);
+                ctx.lineTo(keypoints[387].x, keypoints[387].y);
+                ctx.lineTo(keypoints[373].x, keypoints[373].y);
+                ctx.lineTo(keypoints[380].x, keypoints[380].y);
+                ctx.lineTo(keypoints[374].x, keypoints[374].y);
+                ctx.lineTo(keypoints[381].x, keypoints[381].y);
+                ctx.lineTo(keypoints[382].x, keypoints[382].y);
+                ctx.closePath();
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(keypoints[78].x, keypoints[78].y);
+                ctx.lineTo(keypoints[95].x, keypoints[95].y);
+                ctx.lineTo(keypoints[88].x, keypoints[88].y);
+                ctx.lineTo(keypoints[178].x, keypoints[178].y);
+                ctx.lineTo(keypoints[87].x, keypoints[87].y);
+                ctx.lineTo(keypoints[14].x, keypoints[14].y);
+                ctx.lineTo(keypoints[317].x, keypoints[317].y);
+                ctx.lineTo(keypoints[402].x, keypoints[402].y);
+                ctx.lineTo(keypoints[318].x, keypoints[318].y);
+                ctx.lineTo(keypoints[324].x, keypoints[324].y);
+                ctx.lineTo(keypoints[308].x, keypoints[308].y);
+                ctx.lineTo(keypoints[415].x, keypoints[415].y);
+                ctx.lineTo(keypoints[310].x, keypoints[310].y);
+                ctx.lineTo(keypoints[311].x, keypoints[311].y);
+                ctx.lineTo(keypoints[312].x, keypoints[312].y);
+                ctx.lineTo(keypoints[13].x, keypoints[13].y);
+                ctx.closePath();
+                ctx.stroke();
+
+                const currentFace = { x: keypoints[10].x, y: keypoints[10].y };
+                if (!isDuplicateFace(currentFace)) {
+                  if (savedFaces.length >= MAX_FACES) {
+                    savedFaces.shift();
                   }
+                  savedFaces.push(currentFace);
+                  localStorage.setItem('faces', JSON.stringify(savedFaces));
                 }
+              });
+            }
 
-                if (movementPoints.length > 0) {
-                  let sumX = 0;
-                  let sumY = 0;
-                  movementPoints.forEach(point => {
-                    sumX += point.x;
-                    sumY += point.y;
-                  });
+            if (handPredictions.length > 0) {
+              handPredictions.forEach(prediction => {
+                const keypoints = prediction.keypoints;
 
-                  const avgX = sumX / movementPoints.length;
-                  const avgY = sumY / movementPoints.length;
+                ctx.strokeStyle = 'blue';
+                ctx.lineWidth = 2;
 
-                  // Armazenar a posição para estabilização
-                  positions.push({ x: avgX, y: avgY });
-                  if (positions.length > 10) positions.shift();
-
-                  // Calcular a média das últimas posições para estabilizar
-                  const stabilizedX = positions.reduce((sum, p) => sum + p.x, 0) / positions.length;
-                  const stabilizedY = positions.reduce((sum, p) => sum + p.y, 0) / positions.length;
-
-                  // Limpar o canvas antes de desenhar
-                  ctx.clearRect(0, 0, width, height);
-                  ctx.drawImage(video, 0, 0, width, height);
-
-                  // Desenhar o retângulo estabilizado
-                  ctx.strokeStyle = 'red';
-                  ctx.lineWidth = 2;
-                  ctx.strokeRect(stabilizedX - 50, stabilizedY - 50, 100, 100);
-
-                  // Desenhar olhos e boca de forma aproximada
-                  ctx.strokeStyle = 'blue';
-                  ctx.strokeRect(stabilizedX - 25, stabilizedY - 60, 20, 10); // Olho esquerdo
-                  ctx.strokeRect(stabilizedX + 5, stabilizedY - 60, 20, 10);  // Olho direito
-                  ctx.strokeRect(stabilizedX - 15, stabilizedY - 30, 30, 10); // Boca
-
-                  // Desenhar esqueleto da mão de forma aproximada
-                  ctx.strokeStyle = 'green';
+                keypoints.forEach(keypoint => {
                   ctx.beginPath();
-                  ctx.moveTo(stabilizedX, stabilizedY);
-                  ctx.lineTo(stabilizedX - 20, stabilizedY + 50); // Ponto 1
-                  ctx.lineTo(stabilizedX + 20, stabilizedY + 50); // Ponto 2
-                  ctx.lineTo(stabilizedX, stabilizedY); // Voltar ao ponto inicial
+                  ctx.arc(keypoint.x, keypoint.y, 5, 0, 2 * Math.PI);
                   ctx.stroke();
-                }
-              }
-
-              previousFrame = currentFrame;
+                });
+              });
             }
 
             requestAnimationFrame(detectFaceAndHands);
